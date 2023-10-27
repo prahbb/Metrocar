@@ -1,0 +1,134 @@
+WITH total_data
+     AS (SELECT ad.app_download_key                     AS downloads,
+                ad.platform,
+                Date(Date_trunc('day', ad.download_ts)) AS download_date,
+                s.user_id                               AS user_signed_up,
+                s.age_range,
+                CASE
+         					WHEN rr.request_ts IS NOT NULL THEN rr.user_id
+         				END 																		AS users_requesting,
+                CASE
+                  WHEN rr.accept_ts IS NOT NULL THEN rr.user_id
+                END                                     AS user_accepted,
+                CASE
+                  WHEN rr.dropoff_ts IS NOT NULL THEN rr.user_id
+                END                                     AS user_completed,
+                CASE
+                  WHEN t.charge_status = 'Approved' THEN rr.user_id
+                END                                     AS user_paid,
+                r.ride_id                               AS total_rides_reviewed,
+                CASE
+         					WHEN rr.request_ts IS NOT NULL THEN rr.ride_id
+         				END 																		AS total_rides_requested
+                ,
+                CASE
+                  WHEN rr.accept_ts IS NOT NULL THEN rr.ride_id
+                END                                     AS total_rides_accepted,
+                CASE
+                  WHEN rr.dropoff_ts IS NOT NULL THEN rr.ride_id
+                END                                     AS total_rides_completed
+                ,
+                CASE
+                  WHEN t.charge_status = 'Approved' THEN t.ride_id
+                END                                     AS total_rides_paid,
+                r.user_id                               AS user_reviwed
+         FROM   app_downloads ad
+                LEFT JOIN signups s
+                       ON ad.app_download_key = s.session_id
+                LEFT JOIN ride_requests rr
+                       ON s.user_id = rr.user_id
+                LEFT JOIN transactions t
+                       ON rr.ride_id = t.ride_id
+                LEFT JOIN reviews r
+                       ON rr.ride_id = r.ride_id) 
+                       
+SELECT 0                         						AS Funnel_Step,
+       'Downloads'               						AS Funnel_Name,
+       --A user downloads the Metrocar app from the App Store or Google Play Store.
+       platform                  						AS Platform,
+       age_range                 						AS Age_Range,
+       download_date             						AS Download_Date,
+       COUNT(DISTINCT downloads) 						AS User_Count,
+       0                         						AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 1                              			AS Funnel_Step,
+       'Signup'                       			AS Funnel_Name,
+       --The user creates an account in the Metrocar app, including their name, email, phone number, and payment information. 
+       platform                       			AS Platform,
+       age_range                      			AS Age_Range,
+       download_date                  			AS Download_Date,
+       COUNT(DISTINCT user_signed_up) 			AS User_Count,
+       0                              			AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 2                                     AS Funnel_Step,
+       'Request Ride'                        AS Funnel_Name,
+       --The user opens the app and requests a ride by entering their pickup location, destination, and ride capacity (2 to 6 riders).
+       platform                              AS Platform,
+       age_range                             AS Age_Range,
+       download_date                         AS Download_Date,
+       COUNT(DISTINCT users_requesting)      AS User_Count,
+       COUNT(DISTINCT total_rides_requested) AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 3                                    AS Funnel_Step,
+       'Driver Acceptance'                  AS Funnel_Name,
+       --A nearby driver receives the ride request and accepts the ride.
+       platform                             AS Platform,
+       age_range                            AS Age_Range,
+       download_date                        AS Download_Date,
+       Count(DISTINCT user_accepted)        AS User_Count,
+       Count(DISTINCT total_rides_accepted) AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 4                                     AS Funnel_Step,
+       'Ride Completed'                      AS Funnel_Name,
+       --The driver arrives at the pickup location, and the user gets in the car and rides to their destination.
+       platform                              AS Platform,
+       age_range                             AS Age_Range,
+       download_date                         AS Download_Date,
+       COUNT(DISTINCT user_completed)        AS User_Count,
+       COUNT(DISTINCT total_rides_completed) AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 5                                		 AS Funnel_Step,
+       'Payment'                        		 AS Funnel_Name,
+       --After the ride, the user is charged automatically through the app, and a receipt is sent to their email.
+       platform                         		 AS Platform,
+       age_range                        		 AS Age_Range,
+       download_date                    		 AS Download_Date,
+       COUNT(DISTINCT user_paid)        		 AS User_Count,
+       COUNT(DISTINCT total_rides_paid) 		 AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date
+UNION ALL
+SELECT 6                                     AS Funnel_Step,
+       'Review'                              AS Funnel_Name,
+       --The user is prompted to rate their driver and leave a review of their ride experience.
+       platform                              AS Platform,
+       age_range                             AS Age_Range,
+       download_date                         AS Download_Date,
+       COUNT(DISTINCT user_reviwed)          AS User_Count,
+       COUNT(DISTINCT total_rides_reviewed)  AS Ride_Count
+FROM   total_data
+GROUP  BY platform,
+          age_range,
+          download_date;
